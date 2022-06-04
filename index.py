@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import dash
 from dash import dcc
 from dash import html
@@ -31,7 +33,10 @@ valueChooserNames = {
     "Average annual max daily average wet-bulb temperature (Stull method, deg C)": "wetbulb_avg_max",
     "Average annual min daily average wet-bulb temperature (Stull method, deg C)": "wetbulb_avg_min",
     "Average annual days above wet-bulb temperature 26 C (Stull method)": "wetbulb_days_above_26",
+    "Elevation (m)": "elevation",
 }
+
+presentValuesOnly = set(["elevation"])
 
 app.layout = html.Div(
     children=[
@@ -185,7 +190,10 @@ comparators = {
 def update_figure(
     valname, timename, filter_variables, filter_times, filter_comparisons, filter_values
 ):
-    varname = valueChooserNames[valname] + "-" + timeChooserNames[timename]
+    if valueChooserNames[valname] in presentValuesOnly:
+        varname = valueChooserNames[valname]
+    else:
+        varname = valueChooserNames[valname] + "-" + timeChooserNames[timename]
 
     data = df
     for (filter_variable, filter_time, filter_comp, filter_val) in zip(
