@@ -19,24 +19,48 @@ timeChooserNames = {
 }
 
 valueChooserNames = {
-    "Average daily precipitation (mm/day)": "prec_avg",
+    "Average precipitation (in/year)": "prec_avg",
     "Average annual days with no precipitation": "prec_days_at_or_below_0",
     "Average surface downwelling shortwave radiation (W/m^2)": "rsds_avg",
-    "Average wind speed (m/s)": "sfcWind_avg",
-    "Average annual max daily average wind speed (m/s)": "sfcWind_avg_max",
-    "Average annual max temperature (deg C)": "tmax_avg_max",
-    "Average annual days above 35 C": "tmax_days_above_35",
-    "Average temperature (deg C)": "tmean_avg",
-    "Average annual min temperature (deg C)": "tmin_avg_min",
+    "Average wind speed (mph)": "sfcWind_avg",
+    "Average annual max daily average wind speed (mph)": "sfcWind_avg_max",
+    "Average annual max temperature (deg F)": "tmax_avg_max",
+    "Average annual days above 95 F": "tmax_days_above_35",
+    "Average temperature (deg F)": "tmean_avg",
+    "Average annual min temperature (deg F)": "tmin_avg_min",
     "Average annual days at or below freezing": "tmin_days_at_or_below_0",
-    "Average wet-bulb temperature (Stull method, deg C)": "wetbulb_avg",
-    "Average annual max daily average wet-bulb temperature (Stull method, deg C)": "wetbulb_avg_max",
-    "Average annual min daily average wet-bulb temperature (Stull method, deg C)": "wetbulb_avg_min",
-    "Average annual days above wet-bulb temperature 26 C (Stull method)": "wetbulb_days_above_26",
-    "Elevation (m)": "elevation",
+    "Average wet-bulb temperature (Stull method, deg F)": "wetbulb_avg",
+    "Average annual max daily average wet-bulb temperature (Stull method, deg F)": "wetbulb_avg_max",
+    "Average annual min daily average wet-bulb temperature (Stull method, deg F)": "wetbulb_avg_min",
+    "Average annual days above wet-bulb temperature 78.8 F (Stull method)": "wetbulb_days_above_26",
+    "Elevation (ft)": "elevation",
 }
 
 presentValuesOnly = set(["elevation"])
+
+unitConversions = {
+    "mm/day->in/year": lambda x: (x / 25.4) * 365.25,
+    "in/year->mm/day": lambda x: (x / 365.25) * 25.4,
+    "m->ft": lambda x: x * 3.28084,
+    "ft->m": lambda x: x / 3.28084,
+    "C->F": lambda x: x * 9 / 5 + 32,
+    "F->C": lambda x: (x - 32) * 5 / 9,
+    "m/s->mph": lambda x: x * 2.23694,
+    "mph->m/s": lambda x: x / 2.23694,
+}
+
+unitDisplays = {
+    "sfcWind_avg": ("m/s", "mph"),
+    "sfcWind_avg_max": ("m/s", "mph"),
+    "tmax_avg_max": ("C", "F"),
+    "tmean_avg": ("C", "F"),
+    "tmin_avg_min": ("C", "F"),
+    "wetbulb_avg": ("C", "F"),
+    "wetbulb_avg_max": ("C", "F"),
+    "wetbulb_avg_min": ("C", "F"),
+    "elevation": ("m", "ft"),
+    "prec_avg": ("mm/day", "in/year"),
+}
 
 app.layout = html.Div(
     children=[
@@ -176,6 +200,13 @@ comparators = {
 }
 
 
+def varname_lookup(valname, timename):
+    v = valueChooserNames[valname]
+    if v in presentValuesOnly:
+        return v
+    return v + "-" + timeChooserNames[timename]
+
+
 @app.callback(
     dash.Output("climatemap", "figure"),
     [
@@ -190,10 +221,7 @@ comparators = {
 def update_figure(
     valname, timename, filter_variables, filter_times, filter_comparisons, filter_values
 ):
-    if valueChooserNames[valname] in presentValuesOnly:
-        varname = valueChooserNames[valname]
-    else:
-        varname = valueChooserNames[valname] + "-" + timeChooserNames[timename]
+    varname = varname_lookup(valname, timename)
 
     data = df
     for (filter_variable, filter_time, filter_comp, filter_val) in zip(
@@ -201,16 +229,22 @@ def update_figure(
     ):
         if filter_val is None:
             continue
+        display_conversion = unitDisplays.get(valueChooserNames[filter_variable], None)
+        if display_conversion is not None:
+            filter_val = unitConversions[
+                "%s->%s" % (display_conversion[1], display_conversion[0])
+            ](filter_val)
         data = data[
             comparators[filter_comp](
-                data[
-                    valueChooserNames[filter_variable]
-                    + "-"
-                    + timeChooserNames[filter_time]
-                ],
+                data[varname_lookup(filter_variable, filter_time)],
                 filter_val,
             )
         ]
+
+    data_col = data[varname]
+    display_conversion = unitDisplays.get(valueChooserNames[valname], None)
+    if display_conversion is not None:
+        data_col = unitConversions["%s->%s" % display_conversion](data_col)
 
     fig = go.Figure(
         data=go.Scattergeo(
@@ -218,8 +252,8 @@ def update_figure(
             lat=data["lat"],
             mode="markers",
             marker_showscale=True,
-            marker_color=data[varname],
-            text=data[varname],
+            marker_color=data_col,
+            text=data_col,
         )
     )
 
