@@ -34,9 +34,10 @@ valueChooserNames = {
     "Average annual min daily average wet-bulb temperature (Stull method, deg F)": "wetbulb_avg_min",
     "Average annual days above wet-bulb temperature 78.8 F (Stull method)": "wetbulb_days_above_26",
     "Elevation (ft)": "elevation",
+    "FIPS County Code": "fips",
 }
 
-presentValuesOnly = set(["elevation"])
+presentValuesOnly = set(["elevation", "fips"])
 
 unitConversions = {
     "mm/day->in/year": lambda x: (x / 25.4) * 365.25,
