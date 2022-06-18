@@ -259,8 +259,11 @@ def update_figure(
     query_string = parse_qs(query_string.lstrip("?"))
 
     if "value" in query_string:
-        filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
-        data = df[filter]
+        if "filter" in query_string:
+          filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
+          data = df[filter]
+        else:
+          data = df
         data_col = uel.uel_eval(query_string["value"][0], UEL_ENV)[filter]
 
     else:
