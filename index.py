@@ -216,23 +216,29 @@ UEL_ENV = {
     uel.OpOr: np.logical_or,
     uel.OpAnd: np.logical_and,
     uel.ModNot: np.logical_not,
+    "true": True,
+    "false": False,
 }
 
 
-def set_in_env(var):
+def set_in_env(var, time_suffix):
+    if time_suffix is None:
+      varname = var
+    else:
+      varname = "%s_%s" % (var, time_suffix)
     display_conversion = unitDisplays.get(var, None)
     if display_conversion is None:
-        UEL_ENV[var] = df[var]
+        UEL_ENV[varname] = df[varname]
         return
-    UEL_ENV[var] = unitConversions["%s->%s" % display_conversion](df[var])
+    UEL_ENV[varname] = unitConversions["%s->%s" % display_conversion](df[varname])
 
 
 for var in valueChooserNames.values():
     if var in presentValuesOnly:
-        set_in_env(var)
+        set_in_env(var, None)
     else:
-        for suffix in timeChooserNames.values():
-            set_in_env(var + "_" + suffix)
+        for time_suffix in timeChooserNames.values():
+            set_in_env(var, time_suffix)
 
 
 @app.callback(
@@ -258,41 +264,32 @@ def update_figure(
 ):
     query_string = parse_qs(query_string.lstrip("?"))
 
-    if "value" in query_string:
-        if "filter" in query_string:
-            filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
-            data = df[filter]
-        else:
-            data = df
-        data_col = uel.uel_eval(query_string["value"][0], UEL_ENV)[filter]
+    if "value" not in query_string:
+        query_string["value"] = [varname_lookup(valname, timename)]
 
-    else:
-        varname = varname_lookup(valname, timename)
-
-        data = df
+    if "filter" not in query_string:
+        filter = "true"
         for (filter_variable, filter_time, filter_comp, filter_val) in zip(
             filter_variables, filter_times, filter_comparisons, filter_values
         ):
             if filter_val is None:
                 continue
-            display_conversion = unitDisplays.get(
-                valueChooserNames[filter_variable], None
+            filter += (
+                " and "
+                + varname_lookup(filter_variable, filter_time)
+                + filter_comp
+                + repr(filter_val)
             )
-            if display_conversion is not None:
-                filter_val = unitConversions[
-                    "%s->%s" % (display_conversion[1], display_conversion[0])
-                ](filter_val)
-            data = data[
-                comparators[filter_comp](
-                    data[varname_lookup(filter_variable, filter_time)],
-                    filter_val,
-                )
-            ]
+        query_string["filter"] = [filter]
 
-        data_col = data[varname]
-        display_conversion = unitDisplays.get(valueChooserNames[valname], None)
-        if display_conversion is not None:
-            data_col = unitConversions["%s->%s" % display_conversion](data_col)
+    data = df
+    print("showing", query_string["value"][0])
+    data_col = uel.uel_eval(query_string["value"][0], UEL_ENV)
+    print("filtering", query_string["filter"][0])
+    if query_string["filter"][0] != "true":
+      filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
+      data = data[filter]
+      data_col = data_col[filter]
 
     fig = go.Figure(
         data=go.Scattergeo(
