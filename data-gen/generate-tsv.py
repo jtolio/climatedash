@@ -9,6 +9,8 @@ timeframes = [
     "2049-01-01T12:00:00Z.2052-01-01T12:00:00Z",
     "2089-01-01T12:00:00Z.2092-01-01T12:00:00Z",
 ]
+timeframe_names = ["2010", "2050", "2090"]
+timedelta_names = ["2050d", "2090d"]
 grid = "NAM-22i"
 scenario = "rcp85"
 granularity = "day"
@@ -202,9 +204,9 @@ def calc_deltas(timeframes, generator):
 
 def add_to_db(name, database, absolutes, deltas, mask, lat, lon):
     for i, absolute in enumerate(absolutes):
-        database["header"].append("%s-time%d" % (name, i + 1))
+        database["header"].append("%s_%s" % (name, timeframe_names[i]))
     for i, delta in enumerate(deltas):
-        database["header"].append("%s-delta%d" % (name, i + 1))
+        database["header"].append("%s_%s" % (name, timedelta_names[i]))
     for y in range(len(lat)):
         for x in range(len(lon)):
             if not mask[y][x]:
@@ -212,9 +214,11 @@ def add_to_db(name, database, absolutes, deltas, mask, lat, lon):
                 if key not in database:
                     database[key] = {}
                 for i, absolute in enumerate(absolutes):
-                    database[key]["%s-time%d" % (name, i + 1)] = absolute[y, x]
+                    kname = "%s_%s" % (name, timeframe_names[i])
+                    database[key][kname] = absolute[y, x]
                 for i, delta in enumerate(deltas):
-                    database[key]["%s-delta%d" % (name, i + 1)] = delta[y, x]
+                    kname = "%s_%s" % (name, timedelta_names[i])
+                    database[key][kname] = delta[y, x]
 
 
 def calc_days_above(database, varname, threshold, units, loader=directload):
