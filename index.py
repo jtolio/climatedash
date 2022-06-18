@@ -5,17 +5,20 @@ from dash import dcc
 from dash import html
 import plotly.graph_objects as go
 import pandas as pd
+import numpy as np
+import uel
+from urllib.parse import parse_qs
 
 app = dash.Dash(__name__, title="Climate projections")
 
 df = pd.read_csv("data.tsv", sep="\t")
 
 timeChooserNames = {
-    "2010 value": "time1",
-    "2050 value": "time2",
-    "2010-2050 change": "delta1",
-    "2090 value": "time3",
-    "2010-2090 change": "delta2",
+    "2010 value": "2010",
+    "2050 value": "2050",
+    "2010-2050 change": "2050d",
+    "2090 value": "2090",
+    "2010-2090 change": "2090d",
 }
 
 valueChooserNames = {
@@ -65,6 +68,7 @@ unitDisplays = {
 
 app.layout = html.Div(
     children=[
+        dcc.Location(id="url"),
         html.Div(
             children=[
                 dcc.Dropdown(
@@ -205,12 +209,36 @@ def varname_lookup(valname, timename):
     v = valueChooserNames[valname]
     if v in presentValuesOnly:
         return v
-    return v + "-" + timeChooserNames[timename]
+    return v + "_" + timeChooserNames[timename]
+
+
+UEL_ENV = {
+    uel.OpOr: np.logical_or,
+    uel.OpAnd: np.logical_and,
+    uel.ModNot: np.logical_not,
+}
+
+
+def set_in_env(var):
+    display_conversion = unitDisplays.get(var, None)
+    if display_conversion is None:
+        UEL_ENV[var] = df[var]
+        return
+    UEL_ENV[var] = unitConversions["%s->%s" % display_conversion](df[var])
+
+
+for var in valueChooserNames.values():
+    if var in presentValuesOnly:
+        set_in_env(var)
+    else:
+        for suffix in timeChooserNames.values():
+            set_in_env(var + "_" + suffix)
 
 
 @app.callback(
     dash.Output("climatemap", "figure"),
     [
+        dash.Input("url", "search"),
         dash.Input("value-chooser", "value"),
         dash.Input("time-chooser", "value"),
         dash.Input({"type": "variable", "index": dash.ALL}, "value"),
@@ -220,32 +248,48 @@ def varname_lookup(valname, timename):
     ],
 )
 def update_figure(
-    valname, timename, filter_variables, filter_times, filter_comparisons, filter_values
+    query_string,
+    valname,
+    timename,
+    filter_variables,
+    filter_times,
+    filter_comparisons,
+    filter_values,
 ):
-    varname = varname_lookup(valname, timename)
+    query_string = parse_qs(query_string.lstrip("?"))
 
-    data = df
-    for (filter_variable, filter_time, filter_comp, filter_val) in zip(
-        filter_variables, filter_times, filter_comparisons, filter_values
-    ):
-        if filter_val is None:
-            continue
-        display_conversion = unitDisplays.get(valueChooserNames[filter_variable], None)
-        if display_conversion is not None:
-            filter_val = unitConversions[
-                "%s->%s" % (display_conversion[1], display_conversion[0])
-            ](filter_val)
-        data = data[
-            comparators[filter_comp](
-                data[varname_lookup(filter_variable, filter_time)],
-                filter_val,
+    if "value" in query_string:
+        filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
+        data = df[filter]
+        data_col = uel.uel_eval(query_string["value"][0], UEL_ENV)[filter]
+
+    else:
+        varname = varname_lookup(valname, timename)
+
+        data = df
+        for (filter_variable, filter_time, filter_comp, filter_val) in zip(
+            filter_variables, filter_times, filter_comparisons, filter_values
+        ):
+            if filter_val is None:
+                continue
+            display_conversion = unitDisplays.get(
+                valueChooserNames[filter_variable], None
             )
-        ]
+            if display_conversion is not None:
+                filter_val = unitConversions[
+                    "%s->%s" % (display_conversion[1], display_conversion[0])
+                ](filter_val)
+            data = data[
+                comparators[filter_comp](
+                    data[varname_lookup(filter_variable, filter_time)],
+                    filter_val,
+                )
+            ]
 
-    data_col = data[varname]
-    display_conversion = unitDisplays.get(valueChooserNames[valname], None)
-    if display_conversion is not None:
-        data_col = unitConversions["%s->%s" % display_conversion](data_col)
+        data_col = data[varname]
+        display_conversion = unitDisplays.get(valueChooserNames[valname], None)
+        if display_conversion is not None:
+            data_col = unitConversions["%s->%s" % display_conversion](data_col)
 
     fig = go.Figure(
         data=go.Scattergeo(
