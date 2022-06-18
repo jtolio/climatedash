@@ -260,10 +260,10 @@ def update_figure(
 
     if "value" in query_string:
         if "filter" in query_string:
-          filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
-          data = df[filter]
+            filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
+            data = df[filter]
         else:
-          data = df
+            data = df
         data_col = uel.uel_eval(query_string["value"][0], UEL_ENV)[filter]
 
     else:
