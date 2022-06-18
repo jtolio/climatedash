@@ -16,6 +16,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 COPY index.py .
+COPY uel.py .
 COPY data.tsv .
 
 EXPOSE 8080
