@@ -21,6 +21,8 @@ timeChooserNames = {
     "2010-2090 change": "2090d",
 }
 
+deltaNames = set(["2050d", "2090d"])
+
 valueChooserNames = {
     "Average precipitation (in/year)": "prec_avg",
     "Average annual days with no precipitation": "prec_days_at_or_below_0",
@@ -44,13 +46,10 @@ presentValuesOnly = set(["elevation", "fips"])
 
 unitConversions = {
     "mm/day->in/year": lambda x: (x / 25.4) * 365.25,
-    "in/year->mm/day": lambda x: (x / 365.25) * 25.4,
     "m->ft": lambda x: x * 3.28084,
-    "ft->m": lambda x: x / 3.28084,
     "C->F": lambda x: x * 9 / 5 + 32,
-    "F->C": lambda x: (x - 32) * 5 / 9,
+    "dC->dF": lambda x: x * 9 / 5,
     "m/s->mph": lambda x: x * 2.23694,
-    "mph->m/s": lambda x: x / 2.23694,
 }
 
 unitDisplays = {
@@ -223,14 +222,17 @@ UEL_ENV = {
 
 def set_in_env(var, time_suffix):
     if time_suffix is None:
-      varname = var
+        varname = var
     else:
-      varname = "%s_%s" % (var, time_suffix)
+        varname = "%s_%s" % (var, time_suffix)
     display_conversion = unitDisplays.get(var, None)
     if display_conversion is None:
         UEL_ENV[varname] = df[varname]
         return
-    UEL_ENV[varname] = unitConversions["%s->%s" % display_conversion](df[varname])
+    if time_suffix in deltaNames and "d%s->d%s" % display_conversion in unitConversions:
+        UEL_ENV[varname] = unitConversions["d%s->d%s" % display_conversion](df[varname])
+    else:
+        UEL_ENV[varname] = unitConversions["%s->%s" % display_conversion](df[varname])
 
 
 for var in valueChooserNames.values():
@@ -283,13 +285,11 @@ def update_figure(
         query_string["filter"] = [filter]
 
     data = df
-    print("showing", query_string["value"][0])
     data_col = uel.uel_eval(query_string["value"][0], UEL_ENV)
-    print("filtering", query_string["filter"][0])
     if query_string["filter"][0] != "true":
-      filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
-      data = data[filter]
-      data_col = data_col[filter]
+        filter = uel.uel_eval(query_string["filter"][0], UEL_ENV)
+        data = data[filter]
+        data_col = data_col[filter]
 
     fig = go.Figure(
         data=go.Scattergeo(
