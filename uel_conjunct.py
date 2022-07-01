@@ -1,27 +1,18 @@
 #!/usr/bin/env python3
 
 """
-the uncommon expression language. this is like CEL but instead of using
-protobufs it lets you use your own types kind of like userdata in lua.
+this is a simplified parser that only does
+variable <comparison> value
 """
 
 import ast
 
-
-class ParserError(Exception):
-    pass
-
-
-class UnboundVariableError(Exception):
-    def __str__(self):
-        return "Unknown variable: %s" % (self.args[0])
+from uel import OpAnd, OpLess, OpLessEqual, OpGreater, OpGreaterEqual
+from uel import OpEqual, OpNotEqual, ModNeg, Ident, assert_source
+from uel import Value, ParserError
 
 
-def assert_source(exception, message, line, col):
-    raise exception("Error at line %d, column %d: %s" % (line, col, message))
-
-
-class Parser:
+class ConjunctionParser:
 
     IDENT_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_0123456789")
     DISALLOWED_STARTING_IDENT_CHARS = set("0123456789.")
@@ -138,58 +129,15 @@ class Parser:
         self.skip_all_whitespace()
         return chars
 
-    def parse_literal(self):
-        var = self.parse_identifier()
-        if var is not None:
-            return var
-        return self.parse_value()
-
-    def parse_subexpression(self):
-        if self.char() != "(":
-            return self.parse_literal()
-        self.advance()
-        expr = self.parse_expression()
-        self.skip_all_whitespace()
-        if self.char() != ")":
-            self.assert_source(
-                "subexpression ended unexpectedly, found %r" % self.char()
-            )
-        self.advance()
-        self.skip_all_whitespace()
-        return Subexpression(expr)
-
-    def parse_exponentiation(self):
-        return self.parse_operation(
-            self.parse_subexpression,
-            {
-                OpExp: ["^"],
-            },
-        )
-
     def parse_val_negation(self):
-        return self.parse_modifier(self.parse_exponentiation, {ModNeg: ["-"]})
-
-    def parse_multiplication_division(self):
-        return self.parse_operation(
-            self.parse_val_negation,
-            {
-                OpMul: ["*"],
-                OpDiv: ["/"],
-            },
-        )
-
-    def parse_addition_subtraction(self):
-        return self.parse_operation(
-            self.parse_multiplication_division,
-            {
-                OpAdd: ["+"],
-                OpSub: ["-"],
-            },
-        )
+        return self.parse_modifier(self.parse_value, {ModNeg: ["-"]})
 
     def parse_comparison(self):
-        return self.parse_operation(
-            self.parse_addition_subtraction,
+        lhs = self.parse_identifier()
+        if lhs is None:
+            self.assert_source("identifier expected")
+        cls, rhs = self.parse_op_and_rhs(
+            self.parse_val_negation,
             {
                 OpLess: ["<"],
                 OpLessEqual: ["<="],
@@ -199,15 +147,12 @@ class Parser:
                 OpGreaterEqual: [">="],
             },
         )
-
-    def parse_bool_negation(self):
-        return self.parse_modifier(self.parse_comparison, {ModNot: ["!", "not"]})
+        if cls is None:
+            self.assert_source("comparison expected")
+        return cls(lhs, rhs)
 
     def parse_conjunction(self):
-        return self.parse_operation(self.parse_bool_negation, {OpAnd: ["&&", "and"]})
-
-    def parse_disjunction(self):
-        return self.parse_operation(self.parse_conjunction, {OpOr: ["||", "or"]})
+        return self.parse_operation(self.parse_comparison, {OpAnd: ["&&", "and"]})
 
     def parse_operation(self, value_parse, op_map):
         val = value_parse()
@@ -251,191 +196,41 @@ class Parser:
             self.assert_source("unparsed input")
         return val
 
+    def parseIdentOnly(self):
+        self.skip_all_whitespace()
+        val = self.parse_identifier()
+        if not self.eof():
+            self.assert_source("unparsed input")
+        return val
+
     def parse_expression(self):
-        return self.parse_disjunction()
-
-
-class Subexpression:
-    def __init__(self, expr):
-        self.expr = expr
-
-    def __repr__(self):
-        return "(%r)" % self.expr
-
-    def run(self, env):
-        return self.expr.run(env)
-
-
-class Operation:
-    def __init__(self, lhs, rhs):
-        self.lhs = lhs
-        self.rhs = rhs
-
-    def __repr__(self):
-        return "%r %s %r" % (self.lhs, self.op, self.rhs)
-
-    def run(self, env):
-        return (env.get(type(self)) or DEFAULT_ENV.get(type(self)))(
-            self.lhs.run(env), self.rhs.run(env)
-        )
-
-
-class OpOr(Operation):
-    op = "or"
-
-
-class OpAnd(Operation):
-    op = "and"
-
-
-class OpAdd(Operation):
-    op = "+"
-
-
-class OpSub(Operation):
-    op = "-"
-
-
-class OpMul(Operation):
-    op = "*"
-
-
-class OpDiv(Operation):
-    op = "/"
-
-
-class OpLess(Operation):
-    op = "<"
-
-
-class OpLessEqual(Operation):
-    op = "<="
-
-
-class OpEqual(Operation):
-    op = "=="
-
-
-class OpNotEqual(Operation):
-    op = "!="
-
-
-class OpGreater(Operation):
-    op = ">"
-
-
-class OpGreaterEqual(Operation):
-    op = ">="
-
-
-class OpExp(Operation):
-    op = "^"
-
-
-class Modifier:
-    def __init__(self, val):
-        self.val = val
-
-    def __repr__(self):
-        return "%r %r" % (self.op, self.val)
-
-    def run(self, env):
-        return (env.get(type(self)) or DEFAULT_ENV.get(type(self)))(self.val.run(env))
-
-
-class ModNot(Modifier):
-    op = "not"
-
-
-class ModNeg(Modifier):
-    op = "-"
-
-
-DEFAULT_ENV = {
-    OpOr: lambda a, b: a or b,
-    OpAnd: lambda a, b: a and b,
-    OpAdd: lambda a, b: a + b,
-    OpSub: lambda a, b: a - b,
-    OpMul: lambda a, b: a * b,
-    OpDiv: lambda a, b: a / b,
-    OpLess: lambda a, b: a < b,
-    OpLessEqual: lambda a, b: a <= b,
-    OpEqual: lambda a, b: a == b,
-    OpNotEqual: lambda a, b: a != b,
-    OpGreater: lambda a, b: a > b,
-    OpGreaterEqual: lambda a, b: a >= b,
-    OpExp: lambda a, b: a**b,
-    ModNot: lambda x: not x,
-    ModNeg: lambda x: -x,
-}
-
-
-class Ident:
-    def __init__(self, name):
-        self.name = name
-
-    def __repr__(self):
-        return self.name
-
-    def run(self, env):
-        if self.name not in env:
-            raise UnboundVariableError("%r" % self.name)
-        return env[self.name]
-
-
-class Value:
-    def __init__(self, val):
-        self.val = val
-
-    def __repr__(self):
-        return repr(self.val)
-
-    def run(self, env):
-        return self.val
+        return self.parse_conjunction()
 
 
 def run_tests():
     def check_result(input, env, expected):
-        val = uel_eval(input, env)
+        val = conjunction_eval(input, env)
         if val != expected:
             raise Exception(
                 "input %r with env %r expected %r, got %r" % (input, env, expected, val)
             )
 
-    check_result("1 + 2", {}, 3)
-    check_result("1+2", {}, 3)
-    check_result("1 - 2", {}, -1)
-    check_result("1+2 * 3 / 4 * 5", {}, 1 + ((2 * 3) / 4) * 5)
-    check_result("(1+2)*3/4*5", {}, (1 + 2) * 3 * 5 / 4)
-    check_result(
-        """
-    1 # a one
-    + 2 # add a two
-  """,
-        {},
-        3,
-    )
-    check_result("1 < 2", {}, True)
-    check_result("1 > 2", {}, False)
-    check_result("1 <= 2", {}, True)
-    check_result("1 >= 2", {}, False)
-    check_result("2 <= 2", {}, True)
-    check_result("2 >= 2", {}, True)
-    check_result("2 == 2", {}, True)
-    check_result("not (2 != 2)", {}, True)
-    check_result("2 != 2", {}, False)
-    check_result("2 != 1", {}, True)
-    check_result("2 == 1", {}, False)
-    check_result("1 + (10 / 2) ", {}, 6)
-    check_result("1 + (10 / 2) > 3", {}, True)
+    check_result("x < 2", {"x": 1}, True)
+    check_result("x > 2", {"x": 3}, True)
+    check_result("x > 2 and y < 1", {"x": 3, "y": 0}, True)
+    check_result("x > 2 and y >= 1", {"x": 3, "y": 0}, False)
 
 
-def uel_eval(expression, env):
-    return Parser(expression).parse().run(env)
+def conjunction_eval(expression, env):
+    return ConjunctionParser(expression).parse().run(env)
 
 
-def uel_parse(expression):
-    return Parser(expression).parse()
+def conjunction_parse(expression):
+    return ConjunctionParser(expression).parse()
+
+
+def identifier_parse(expression):
+    return ConjunctionParser(expression).parseIdentOnly()
 
 
 if __name__ == "__main__":
