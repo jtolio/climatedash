@@ -8,7 +8,7 @@ import dash_bootstrap_components as dbc
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-from urllib.parse import parse_qs
+from urllib.parse import parse_qs, urlencode
 
 import uel, uel_conjunct
 from data import (
@@ -335,6 +335,21 @@ def draw_advanced_ui(selection_box, filter_box):
     )
 
 
+def parse_simple(selection_expr, filter_expr):
+    if selection_expr.strip() == "":
+        return None, None
+    try:
+        selection_parsed = uel_conjunct.identifier_parse(selection_expr)
+        selection_parsed.run(UEL_ENV_CHECK)
+        filter_parsed = None
+        if filter_expr.strip() != "":
+            filter_parsed = uel_conjunct.conjunction_parse(filter_expr)
+            filter_parsed.run(UEL_ENV_CHECK)
+    except (uel.ParserError, uel.UnboundVariableError):
+        return None, None
+    return selection_parsed, filter_parsed
+
+
 @app.callback(
     [
         dash.Output("controls", "children"),
@@ -373,15 +388,32 @@ def draw_ui(
 ):
     if len(ui_tab) == 0 and len(last_tab) == 0:
         query = parse_qs(query.lstrip("?"))
-        if "selection" in query:
+        if "selection" in query and query["selection"][-1].strip():
             last_tab = ["tab-advanced"]
             if "tab" in query and query["tab"][-1] == "advanced":
                 ui_tab = ["tab-advanced"]
             else:
                 ui_tab = ["tab-simple"]
-            selection_box = [query["selection"][-1]]
-            if "filter" in query:
+            selection_box = [query["selection"][-1].strip()]
+            if "filter" in query and query["filter"][-1]:
                 filter_box = [query["filter"][-1]]
+            else:
+                filter_box = [""]
+
+    good_for_simple = True
+    if len(selection_box) > 1:
+        good_for_simple = False
+    if len(filter_box) > 1:
+        good_for_simple = False
+    if good_for_simple:
+        selection_parsed, filter_parsed = parse_simple(
+            len(selection_box) > 0 and selection_box[0] or "",
+            len(filter_box) > 0 and filter_box[0] or "",
+        )
+        if selection_parsed is None and (
+            len(selection_box) != 0 or len(filter_box) != 0
+        ):
+            good_for_simple = False
 
     if (
         len(ui_tab) == 1
@@ -389,21 +421,6 @@ def draw_ui(
         and ui_tab[0] == "tab-simple"
         and last_tab[0] == "tab-advanced"
     ):
-        good_for_simple = True
-        if len(selection_box) != 1:
-            good_for_simple = False
-        if len(filter_box) != 1:
-            good_for_simple = False
-        if good_for_simple:
-            try:
-                selection_parsed = uel_conjunct.identifier_parse(selection_box[0])
-                selection_parsed.run(UEL_ENV_CHECK)
-                filter_parsed = None
-                if filter_box[0].strip() != "":
-                    filter_parsed = uel_conjunct.conjunction_parse(filter_box[0])
-                    filter_parsed.run(UEL_ENV_CHECK)
-            except (uel.ParserError, uel.UnboundVariableError):
-                good_for_simple = False
 
         if not good_for_simple:
             ui_tab = ["tab-advanced"]
@@ -468,20 +485,52 @@ def draw_ui(
     if filter_error_div is not None:
         filter_error_div.children = [filter_error]
 
+    simple_tab_enabled = (
+        selection_error == "" and filter_error == "" and good_for_simple
+    )
+
+    tabs = []
+    if simple_tab_enabled:
+        tabs.append(
+            dbc.Tab(
+                label="Simple",
+                tab_id="tab-simple",
+            )
+        )
+    else:
+        tabs.append(dbc.Tab(label="Simple", disabled=True))
+    tabs.append(dbc.Tab(label="Advanced", tab_id="tab-advanced"))
+
     return [
         dbc.Card(
             [
                 dbc.CardHeader(
                     dbc.Tabs(
-                        [
-                            dbc.Tab(label="Simple", tab_id="tab-simple"),
-                            dbc.Tab(label="Advanced", tab_id="tab-advanced"),
-                        ],
+                        tabs,
                         id={"type": "complexity-tabs", "index": 0},
                         active_tab=selected_tab,
                     )
                 ),
-                dbc.CardBody(html.Div(within_tab)),
+                dbc.CardBody(
+                    html.Div(
+                        within_tab
+                        + [
+                            html.Div(
+                                style={"text-align": "right"},
+                                children=dbc.Button(
+                                    children="Share to URL",
+                                    href="?"
+                                    + urlencode(
+                                        {
+                                            "selection": selection_expr,
+                                            "filter": filter_expr,
+                                        }
+                                    ),
+                                ),
+                            ),
+                        ]
+                    )
+                ),
             ]
         ),
         dbc.Input(
@@ -518,12 +567,12 @@ def update_map(selection_expr, filter_expr):
             if filter_expr.strip() != "":
                 filter = uel.uel_eval(filter_expr, UEL_ENV)
                 try:
-                  data_col = data_col[filter]
-                  lat = lat[filter]
-                  lon = lon[filter]
+                    data_col = data_col[filter]
+                    lat = lat[filter]
+                    lon = lon[filter]
                 except KeyError:
-                  filter_error = "invalid filter"
-                  data_col, lat, lon = None, None, None
+                    filter_error = "invalid filter"
+                    data_col, lat, lon = None, None, None
 
     fig = go.Figure(
         data=go.Scattergeo(
