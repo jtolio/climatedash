@@ -31,11 +31,11 @@ valueChooserNames = {
     "Average annual days above 95 F": "tmax_days_above_95",
     "Average temperature (deg F)": "tmean_avg",
     "Average annual min temperature (deg F)": "tmin_avg_min",
-    "Average annual days at or below freezing": "tmin_days_at_or_below_0",
+    "Average annual days at or below freezing": "tmin_days_at_or_below_32",
     "Average wet-bulb temperature (Stull method, deg F)": "wetbulb_avg",
     "Average annual max daily average wet-bulb temperature (Stull method, deg F)": "wetbulb_avg_max",
     "Average annual min daily average wet-bulb temperature (Stull method, deg F)": "wetbulb_avg_min",
-    "Average annual days above wet-bulb temperature 78.8 F (Stull method)": "wetbulb_days_above_788",
+    "Average annual days above wet-bulb temperature 78.8 F (Stull method)": "wetbulb_days_above_78_8",
     "Elevation (ft)": "elevation",
     "FIPS County Code": "fips",
 }
@@ -56,7 +56,8 @@ varnameConversions = {}
 
 for fname, cname in (
     ("tmax_days_above_95", "tmax_days_above_35"),
-    ("wetbulb_days_above_788", "wetbulb_days_above_26"),
+    ("wetbulb_days_above_78_8", "wetbulb_days_above_26"),
+    ("tmin_days_at_or_below_32", "tmin_days_at_or_below_0"),
 ):
     for t in timeChooserVals:
         varnameConversions[fname + "_" + t] = cname + "_" + t
