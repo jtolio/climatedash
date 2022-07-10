@@ -26,7 +26,7 @@ from data import (
 
 app = dash.Dash(
     __name__,
-    title="JT's Climate Viewer",
+    title="JT's Climate Dashboard",
     external_stylesheets=[dbc.themes.BOOTSTRAP],
 )
 
@@ -35,7 +35,7 @@ app.layout = html.Div(
     [
         dbc.Container(
             [
-                html.H1("JT's Climate Viewer"),
+                html.H1("JT's Climate Dashboard"),
                 dcc.Location(id="url"),
             ]
         ),
@@ -297,6 +297,9 @@ def draw_advanced_ui(selection_box, filter_box):
     if len(filter_box) != 1:
         filter_box = [""]
 
+    selection_error_div = html.P(style={"color": "red"})
+    filter_error_div = html.P(style={"color": "red"})
+
     return (
         [
             dbc.InputGroup(
@@ -310,6 +313,7 @@ def draw_advanced_ui(selection_box, filter_box):
                     ),
                 ]
             ),
+            selection_error_div,
             html.Br(),
             dbc.InputGroup(
                 [
@@ -322,9 +326,12 @@ def draw_advanced_ui(selection_box, filter_box):
                     ),
                 ]
             ),
+            filter_error_div,
         ],
         selection_box[0],
         filter_box[0],
+        selection_error_div,
+        filter_error_div,
     )
 
 
@@ -433,11 +440,16 @@ def draw_ui(
     selection_expr = ""
     filter_expr = ""
     selected_tab = "tab-simple"
+    selection_error_div, filter_error_div = None, None
     if len(ui_tab) == 1 and ui_tab[0] == "tab-advanced":
         selected_tab = "tab-advanced"
-        within_tab, selection_expr, filter_expr = draw_advanced_ui(
-            selection_box, filter_box
-        )
+        (
+            within_tab,
+            selection_expr,
+            filter_expr,
+            selection_error_div,
+            filter_error_div,
+        ) = draw_advanced_ui(selection_box, filter_box)
     else:
         within_tab, selection_expr, filter_expr = draw_simple_ui(
             add_filter_clicks,
@@ -451,7 +463,11 @@ def draw_ui(
         )
 
     map_graph, selection_error, filter_error = update_map(selection_expr, filter_expr)
-    # TODO: show selection_error, filter_error
+    if selection_error_div is not None:
+        selection_error_div.children = [selection_error]
+    if filter_error_div is not None:
+        filter_error_div.children = [filter_error]
+
     return [
         dbc.Card(
             [
@@ -482,7 +498,7 @@ def update_map(selection_expr, filter_expr):
     selection_error = ""
     try:
         uel.uel_eval(selection_expr, UEL_ENV_CHECK)
-    except (uel.UnboundVariableError, uel.ParserError) as e:
+    except (uel.UnboundVariableError, uel.ParserError, KeyError) as e:
         selection_error = str(e)
         selection_expr = ""
 
@@ -490,7 +506,7 @@ def update_map(selection_expr, filter_expr):
     if filter_expr.strip() != "":
         try:
             uel.uel_eval(filter_expr, UEL_ENV_CHECK)
-        except (uel.UnboundVariableError, uel.ParserError) as e:
+        except (uel.UnboundVariableError, uel.ParserError, KeyError) as e:
             filter_error = str(e)
             selection_expr = ""
 
@@ -501,9 +517,13 @@ def update_map(selection_expr, filter_expr):
             lon = df["lon"]
             if filter_expr.strip() != "":
                 filter = uel.uel_eval(filter_expr, UEL_ENV)
-                data_col = data_col[filter]
-                lat = lat[filter]
-                lon = lon[filter]
+                try:
+                  data_col = data_col[filter]
+                  lat = lat[filter]
+                  lon = lon[filter]
+                except KeyError:
+                  filter_error = "invalid filter"
+                  data_col, lat, lon = None, None, None
 
     fig = go.Figure(
         data=go.Scattergeo(
