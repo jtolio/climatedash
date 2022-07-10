@@ -88,7 +88,7 @@ app.layout = html.Div(
                     [
                         dcc.Graph(
                             id="climatemap",
-                            style={"width": "50vw"},
+                            style={"width": "50vw", "height": "80vh"},
                             config={"displaylogo": False},
                         ),
                     ]
