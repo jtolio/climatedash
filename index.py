@@ -482,7 +482,7 @@ def draw_ui(
         len(ui_tab) == 1
         and len(last_tab) == 1
         and ui_tab[0] == "tab-simple"
-        and last_tab[0] == "tab-advanced"
+        and last_tab[0] in ("tab-advanced", "tab-docs")
     ):
 
         if not good_for_simple:
